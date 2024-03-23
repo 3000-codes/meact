@@ -4,14 +4,17 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest"
   },
   "dependencies": {
     "@meact/core": "workspace:^",
     "@meact/dom": "workspace:^"
   },
   "devDependencies": {
-    "vite": "^5.1.6"
+    "@types/react": "^18.2.69",
+    "vite": "^5.1.6",
+    "vitest": "^1.4.0"
   },
   "keywords": [],
   "author": "",

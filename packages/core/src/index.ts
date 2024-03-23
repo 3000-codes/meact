@@ -1,10 +1,13 @@
-export function createElement(type: string, props: Record<string, any>, ...children: (RElement | string)[]): RElement {
+export function createElement(type: string, props?: Record<string, any> | null, ...children: (RElement | string)[]): RElement {
+  console.log('really???');
+
   return {
     type,
     props: {
       ...props,
       children: children.map(child => typeof child === 'string' ? createTextNode(child) : child),
     },
+    children
   }
 }
 
@@ -13,7 +16,8 @@ export function createTextNode(text: string): RElement {
     type: 'TEXT_ELEMENT',
     props: {
       text,
-    }
+    },
+    children: [text]
   }
 }
 
