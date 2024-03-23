@@ -1,10 +1,14 @@
 {
-  "name": "meact",
+  "name": "mini-react",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@meact/core": "workspace:^",
+    "@meact/dom": "workspace:^"
   },
   "devDependencies": {
     "vite": "^5.1.6"

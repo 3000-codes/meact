@@ -7,10 +7,25 @@ settings:
 importers:
 
   .:
+    dependencies:
+      '@meact/core':
+        specifier: workspace:^
+        version: link:packages/core
+      '@meact/dom':
+        specifier: workspace:^
+        version: link:packages/dom
     devDependencies:
       vite:
         specifier: ^5.1.6
         version: 5.2.3
+
+  packages/core: {}
+
+  packages/dom:
+    dependencies:
+      '@meact/core':
+        specifier: workspace:^
+        version: link:../core
 
 packages:
 
