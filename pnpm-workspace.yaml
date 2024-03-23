@@ -1,0 +1,3 @@
+packages: # 此名称必须为packages，下面的值为对应路径数组
+  - "packages/*" # *表示packages下的直属文件夹， 也可以写成packages/a packages/b
+  - "examples/**" # **表示examples下的所有文件夹
