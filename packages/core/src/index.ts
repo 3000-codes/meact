@@ -1,17 +1,30 @@
+/**
+ * 表示一个React元素的接口。
+ */
 interface RElement {
   type: string;
   props: Record<string, any>;
 }
 
+/**
+ * 表示一个Fiber节点的接口。
+ */
 interface Fiber {
-  type: string;
+  type: string; // fiber type
   props: Record<string, any>;
-  parent: Fiber | null;
-  child: Fiber | null;
+  parent: Fiber | null; // parent node
+  child: Fiber | null; // child node
   sibling: Fiber | null;
   dom: HTMLElement | Text | null;
 }
 
+/**
+ * 创建一个React元素。
+ * @param type 元素类型。
+ * @param props 元素属性。
+ * @param children 子元素。
+ * @returns 创建的React元素。
+ */
 export function createElement(
   type: string,
   props?: Record<string, any> | null,
@@ -28,6 +41,11 @@ export function createElement(
   };
 }
 
+/**
+ * 创建一个文本元素。
+ * @param text 文本内容。
+ * @returns 创建的文本元素。
+ */
 export function createTextElement(text: string): RElement {
   return {
     type: "TEXT_ELEMENT",
@@ -40,16 +58,27 @@ export function createTextElement(text: string): RElement {
 
 /**
  * @deprecated
+ * 渲染React元素到指定的容器。
+ * @param el 要渲染的React元素。
+ * @param container 容器元素。
  */
 export function _render(el: RElement, container: HTMLElement): void {
   let tag: HTMLElement | Text | null = null;
   const props = el.props;
+
+  /**
+   * 渲染文本节点。
+   * @param tag 目标节点。
+   * @param text 文本内容。
+   * @returns 渲染后的节点。
+   */
   const renderText = (tag: HTMLElement, text: string): HTMLElement => {
     const textNode = document.createTextNode("");
     textNode.nodeValue = text;
     tag.appendChild(textNode);
     return tag;
   };
+
   if (el.type === "TEXT_ELEMENT") {
     tag = document.createTextNode("");
     tag.nodeValue = el.props.nodeValue;
@@ -74,18 +103,32 @@ export function _render(el: RElement, container: HTMLElement): void {
       }
     }
   }
+
   container.appendChild(tag);
 }
 
+/**
+ * 创建DOM节点。
+ * @param fiber Fiber节点。
+ * @returns 创建的DOM节点。
+ */
 function createDom(fiber: Fiber): HTMLElement | Text {
   let tag: HTMLElement | Text | null = null;
   const props = fiber.props;
+
+  /**
+   * 渲染文本节点。
+   * @param tag 目标节点。
+   * @param text 文本内容。
+   * @returns 渲染后的节点。
+   */
   const renderText = (tag: HTMLElement, text: string): HTMLElement => {
     const textNode = document.createTextNode("");
     textNode.nodeValue = text;
     tag.appendChild(textNode);
     return tag;
   };
+
   if (fiber.type === "TEXT_ELEMENT") {
     tag = document.createTextNode("");
     tag.nodeValue = fiber.props.nodeValue;
@@ -110,9 +153,15 @@ function createDom(fiber: Fiber): HTMLElement | Text {
       }
     }
   }
+
   return tag;
 }
 
+/**
+ * 渲染React元素到指定的容器。
+ * @param el 要渲染的React元素。
+ * @param container 容器元素。
+ */
 export function render(el: RElement, container: HTMLElement): void {
   nextUnitOfWork = {
     dom: container,
@@ -128,22 +177,37 @@ export function render(el: RElement, container: HTMLElement): void {
 
 let nextUnitOfWork: Fiber | null = null;
 
+/**
+ * 工作循环函数。
+ * @param deadline 空闲时间截止对象。
+ */
 function workLoop(deadline: IdleDeadline): void {
+  console.log('i am waiting');
   let shouldYield = false;
   while (nextUnitOfWork && !shouldYield) {
+    // 等待时间片结束
     nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+    // console.log(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
   }
   requestIdleCallback(workLoop);
 }
 
+requestIdleCallback(workLoop);
+
+/**
+ * 执行Fiber节点的工作单元。
+ * @param fiber Fiber节点。
+ * @returns 下一个工作单元。
+ */
 function performUnitOfWork(fiber: Fiber): Fiber | null {
-  if (!fiber.dom) fiber.dom = createDom(fiber);
-  if (fiber.parent) fiber.parent.dom!.appendChild(fiber.dom);
+  if (!fiber.dom) fiber.dom = createDom(fiber); // 创建DOM节点
+  if (fiber.parent) fiber.parent.dom!.appendChild(fiber.dom); // 插入并渲染DOM节点
   const elements = fiber.props.children;
   let index = 0;
   let prevSibling: Fiber | null = null;
 
+  // 1. 创建子节点
   while (index < elements.length) {
     const element = elements[index];
     const newFiber: Fiber = {
@@ -155,23 +219,31 @@ function performUnitOfWork(fiber: Fiber): Fiber | null {
       sibling: null,
     };
     if (index === 0) {
+      // 如果是第一个子节点，设置为child
       fiber.child = newFiber;
     } else {
+      // 如果不是第一个子节点，设置为sibling
       prevSibling!.sibling = newFiber;
     }
-    prevSibling = newFiber;
+    prevSibling = newFiber; // 更新prevSibling
     index++;
   }
 
   if (fiber.child) {
-    return fiber.child;
+    return fiber.child; // 如果有子节点，返回子节点
   }
-  let nextFiber: Fiber | null = fiber;
+  let nextFiber: Fiber | null = fiber; // linkNode point to the parent node
   while (nextFiber) {
+    // 如果没有子节点，返回兄弟节点
     if (nextFiber.sibling) {
       return nextFiber.sibling;
     }
     nextFiber = nextFiber.parent;
   }
+  /**
+   * 1. 如果有子节点，返回子节点
+   * 2. 如果没有子节点，返回兄弟节点
+   * 3. 如果没有兄弟节点，返回父节点的兄弟节点
+   */
   return null;
 }
