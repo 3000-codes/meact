@@ -1,7 +1,4 @@
-
-type RElement = {
-  type: string,
-  props: Record<string, any>,
-  children: (RElement | string)[]
+interface RElement {
+  type: string;
+  props: Record<string, any>;
 }
-
