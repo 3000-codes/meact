@@ -13,7 +13,7 @@ root.render(App)
 // }, 1000)
 
 
-setInterval(() => {
-  App.props.children.push(createTextElement('world'))
-  root.render(App)
-}, 1000)
+// setInterval(() => {
+//   App.props.children.push(createTextElement('world'))
+//   root.render(App)
+// }, 1000)

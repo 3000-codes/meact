@@ -16,6 +16,7 @@ interface Fiber {
   child: Fiber | null; // child node
   sibling: Fiber | null;
   dom: HTMLElement | Text | null;
+  alternate: Fiber | null; // 用于记录上一次的Fiber节点
 }
 
 /**
@@ -157,13 +158,30 @@ function createDom(fiber: Fiber): HTMLElement | Text {
   return tag;
 }
 
+function commitRoot() {
+  commitWork(wipRoot!.child!);
+  currentRoot = wipRoot;
+  wipRoot = null;
+}
+
+function commitWork(fiber: Fiber) {
+  debugger
+  if (!fiber) return;
+  const domParent = fiber.parent!.dom; // 第一次渲染时，fiber.parent.dom为container，之后为父节点的dom
+  if (fiber.dom) {
+    domParent!.appendChild(fiber.dom);
+  }
+  commitWork(fiber.child!);
+  commitWork(fiber.sibling!);
+}
+
 /**
  * 渲染React元素到指定的容器。
  * @param el 要渲染的React元素。
  * @param container 容器元素。
  */
 export function render(el: RElement, container: HTMLElement): void {
-  nextUnitOfWork = {
+  wipRoot = {
     dom: container,
     props: {
       children: [el],
@@ -172,10 +190,16 @@ export function render(el: RElement, container: HTMLElement): void {
     child: null,
     sibling: null,
     type: "",
+    alternate: currentRoot
+
   };
+  nextUnitOfWork = wipRoot;// 第一次渲染的Fiber节点
 }
 
 let nextUnitOfWork: Fiber | null = null;
+let currentRoot: Fiber | null = null;
+let wipRoot: Fiber | null = null; // 根节点
+
 
 /**
  * 工作循环函数。
@@ -190,6 +214,12 @@ function workLoop(deadline: IdleDeadline): void {
     // console.log(nextUnitOfWork);
     shouldYield = deadline.timeRemaining() < 1;
   }
+  while (!nextUnitOfWork && wipRoot) {
+    // 如果没有下一个工作单元，但是有根节点,说明已经完成了所有的工作
+    debugger
+    commitRoot(); // 提交根节点
+  }
+
   requestIdleCallback(workLoop);
 }
 
@@ -202,32 +232,12 @@ requestIdleCallback(workLoop);
  */
 function performUnitOfWork(fiber: Fiber): Fiber | null {
   if (!fiber.dom) fiber.dom = createDom(fiber); // 创建DOM节点
-  if (fiber.parent) fiber.parent.dom!.appendChild(fiber.dom); // 插入并渲染DOM节点
-  const elements = fiber.props.children;
-  let index = 0;
-  let prevSibling: Fiber | null = null;
 
-  // 1. 创建子节点
-  while (index < elements.length) {
-    const element = elements[index];
-    const newFiber: Fiber = {
-      type: element.type,
-      props: element.props,
-      parent: fiber,
-      dom: null,
-      child: null,
-      sibling: null,
-    };
-    if (index === 0) {
-      // 如果是第一个子节点，设置为child
-      fiber.child = newFiber;
-    } else {
-      // 如果不是第一个子节点，设置为sibling
-      prevSibling!.sibling = newFiber;
-    }
-    prevSibling = newFiber; // 更新prevSibling
-    index++;
+  if (fiber.parent) { // 不需要每次都去判断，当nextUnitOfWork清空时，就可以直接插入到DOM中
+    fiber.parent.dom!.appendChild(fiber.dom); // 插入并渲染DOM节点
   }
+  const elements = fiber.props.children;
+  reconcileChildren(fiber, elements); // 协调子节点
 
   if (fiber.child) {
     return fiber.child; // 如果有子节点，返回子节点
@@ -246,4 +256,33 @@ function performUnitOfWork(fiber: Fiber): Fiber | null {
    * 3. 如果没有兄弟节点，返回父节点的兄弟节点
    */
   return null;
+}
+
+
+function reconcileChildren(fiber: Fiber, elements: RElement[]): void {
+  let index = 0;
+  let prevSibling: Fiber | null = null;
+
+  // 1. 创建子节点
+  while (index < elements.length) {
+    const element = elements[index];
+    const newFiber: Fiber = {
+      type: element.type,
+      props: element.props,
+      parent: fiber,
+      dom: null,
+      child: null,
+      sibling: null,
+      alternate: null
+    };
+    if (index === 0) {
+      // 如果是第一个子节点，设置为child
+      fiber.child = newFiber;
+    } else {
+      // 如果不是第一个子节点，设置为sibling
+      prevSibling!.sibling = newFiber;
+    }
+    prevSibling = newFiber; // 更新prevSibling
+    index++;
+  }
 }
