@@ -115,6 +115,7 @@ function commintDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
   } else {
     commintDeletion(fiber.child!, domParent);
   }
+  fiber.hooks?.forEach(i => i?.cleanup())
 }
 
 function commitWork(fiber: Fiber | null) {
@@ -350,4 +351,20 @@ function performWorkOfUnit(fiber: Fiber): Fiber | null {
    * 3. 如果没有兄弟节点，返回父节点的兄弟节点
    */
   return null;
+}
+
+// const 
+
+
+export function useEffect(callback: () => void, deps: any[]) {
+  let cleanup = null
+  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex as number];
+  const hasChanged = oldHook ? !deps.every((dep, i) => dep === oldHook.deps[i]) : true;
+  if (hasChanged) {
+    cleanup = callback();
+  }
+
+  wipFiber?.hooks?.push({ deps, cleanup });
+  hookIndex!++;
+
 }
