@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@meact/core": "workspace:^",
-    "@meact/didact": "workspace:^",
     "@meact/dom": "workspace:^"
   },
   "devDependencies": {
