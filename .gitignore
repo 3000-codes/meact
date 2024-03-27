@@ -5,6 +5,8 @@ dist
 tmp
 out-tsc
 bazel-out
+didact
+*.copy.*
 
 # Node
 node_modules

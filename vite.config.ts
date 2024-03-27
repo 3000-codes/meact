@@ -2,7 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 export default defineConfig({
-  plugins: [react()],
+  // plugins: [react()],
   server: {
     host: "0.0.0.0"
   },
@@ -10,4 +10,9 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
   },
+  esbuild: {
+    jsxFactory: 'React.createElement',
+    jsxImportSource: "@meact/core",
+    jsxDev: false
+  }
 })

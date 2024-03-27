@@ -1,5 +1,5 @@
 {
-  "name": "@meact/core",
+  "name": "@meact/shared",
   "version": "1.0.0",
   "description": "",
   "main": "index.ts",
@@ -10,6 +10,6 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@meact/shared": "workspace:^"
+    "@meact/core": "workspace:^"
   }
 }

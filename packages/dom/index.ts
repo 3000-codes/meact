@@ -1,4 +1,4 @@
-import { render } from "@meact/core"
+import { render, RElement } from "@meact/core"
 
 const ReactDOM = {
   createRoot(container: HTMLElement) {
