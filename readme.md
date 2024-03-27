@@ -195,7 +195,7 @@ render(App, document.body);
 
 ### 1.4.1 渲染优化
 
-当dom节点过于庞大时，我们的运算量会很大，我们可以通过 `requestIdleCallback` 来进行渲染优化：
+当dom节点过于庞大时，我们的运算量会很大，可以观察到明显的白屏时间。我们可以通过 `requestIdleCallback` 来进行渲染优化：
 
 ```javascript
 let nextUnitOfWork = null; // 下一个工作单元
@@ -371,4 +371,89 @@ function performUnitOfWork(fiber) {
     }
     return null;
 }
+```
+
+运行 `src/drafts/第一章.jsx` 与 `src/drafts/第二章.jsx` ，中100万个节点的渲染时间对比，可以发现Fiber的渲染时间明显小于Virtual DOM的渲染时间。
+
+## 3. 统一提交
+
+在2.2节中的 `performUnitOfWork` 函数中，我们将渲染任务分解为多个小任务，但是我们并没有统一提交这些小任务，而每次提交都会触发一次浏览器的重绘，这样会导致性能的浪费。
+
+```javascript
+function performUnitOfWork(fiber) {
+
+    // ...codes
+    if (fiber.parent) {
+        // NOTE：此时已经从vnode开始与真实dom挂钩了
+        fiber.parent.dom.appendChild(fiber.dom);
+    }
+    // ...codes
+
+}
+```
+
+我们可以将渲染任务统一提交：
+  + 什么时候提交呢？
+    - 当所有的任务都执行完毕时，我们统一提交
+  + 在哪里提交呢？
+    - 在 `workLoop` 函数中提交
+  + 如何提交呢？
+    - 我们可以将所有的任务放入一个数组中，然后遍历数组，将所有的任务提交
+
+```javascript
+let nextUnitOfWork = null;
+let wipRoot = null; // work in progress root
+
+function render(element, container) {
+    wipRoot = {
+        dom: container,
+        props: {
+            children: [element]
+        }
+    };
+    nextUnitOfWork = wipRoot;
+}
+
+function workLoop(deadline) {
+
+    let shouldYield = false;
+    while (nextUnitOfWork && !shouldYield) {
+        nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+        shouldYield = deadline.timeRemaining() < 1;
+    }
+    if (!nextUnitOfWork && wipRoot) {
+        commitRoot(); // 统一提交
+    }
+    requestIdleCallback(workLoop);
+
+}
+
+function commitRoot() {
+    commitWork(wipRoot.child); // 从长子开始提交
+    wipRoot = null;
+
+}
+
+function commitWork(fiber) {
+
+    if (!fiber) {
+        return;
+    }
+    const domParent = fiber.parent.dom; // 父节点的dom节点
+    domParent.appendChild(fiber.dom); // 将子节点添加到父节点(真实dom)中
+    commitWork(fiber.child); // 递归子节点
+    commitWork(fiber.sibling); // 递归兄弟节点
+
+}
+```
+
+## 4. 更新与删除fiber
+
+在3节中，我们只实现了渲染，但是我们并没有实现更新与删除。其本质就是将fiber的children与siblings进行更新与删除。
+
+### 4.1 更新
+
+我们可以通过比较新旧节点的type与props来判断是否需要更新：
+
+```javascript
 ```

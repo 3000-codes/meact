@@ -19,11 +19,6 @@ function createTextElement(text) {
   };
 }
 
-/** @jsx createElement */
-const App = (
-  <p> hello, world </p>
-);
-
 function render(element, container) {
   const dom = element.type === 'TEXT_ELEMENT' ? document.createTextNode('') : document.createElement(element.type);
   const isTextElement = element.type === 'TEXT_ELEMENT';
@@ -35,4 +30,31 @@ function render(element, container) {
   container.appendChild(dom);
 }
 
+/** @jsx createElement */
+const App = (
+  <p> hello, world </p>
+);
 render(App, document.getElementById('root'));
+
+
+// 测试 1e6 个元素
+const list2 = {
+  type: 'ul',
+  props: {
+    children: Array.from({ length: 1e6 }, (_, i) => ({
+      type: 'li',
+      props: {
+        children: [{
+          type: 'TEXT_ELEMENT',
+          props: {
+            nodeValue: `Item ${i}`,
+            children: []
+          }
+        }]
+      }
+    }))
+  }
+};
+// render(list2, document.getElementById('root'));
+
+
