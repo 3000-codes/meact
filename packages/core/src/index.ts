@@ -115,7 +115,7 @@ function commintDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
   } else {
     commintDeletion(fiber.child!, domParent);
   }
-  fiber.hooks?.forEach(i => i?.cleanup())
+  fiber.hooks?.forEach(i => i?.cleanup?.()) //  卸载时执行cleanup
 }
 
 function commitWork(fiber: Fiber | null) {
@@ -130,31 +130,47 @@ function commitWork(fiber: Fiber | null) {
   if (fiber.dom != null && fiber.effectTag === EffectTag.PLACEMENT) {
     // 如果是新增节点，添加到父节点
     (fiberParent.dom as HTMLElement).append(fiber.dom);
+    fiber.hooks?.forEach(hook => {
+      const callback = hook?.callback;
+      const deps = hook?.deps;
+      let cleanup = hook?.cleanup;
+      if (deps?.length === 0) {
+        cleanup ??= callback?.()
+      }
+      hook.cleanup = cleanup;
+    })
   }
   else if (fiber.dom != null && fiber.effectTag === EffectTag.UPDATE) {
     // 如果是更新节点，更新节点
     updateProps(fiber.dom, fiber.alternate!.props, fiber.props);
+    fiber.hooks?.forEach(hook => {
+      const callback = hook?.callback;
+      const deps = hook?.deps;
+      const hasChanged = hook?.hasChanged;
+      let cleanup = hook?.cleanup;
+      if (deps === undefined) {
+        cleanup ??= callback?.()
+      } else if (deps.length && hasChanged) {
+        cleanup ??= callback?.()
+      }
+      hook.cleanup = cleanup;
+    }) // 更新时执行callback
   }
   else if (fiber.effectTag === EffectTag.DELETION) {
     // 如果是删除节点，删除节点
     // fiberParent.dom.removeChild(fiber.dom!);
     commintDeletion(fiber, fiberParent.dom);
+
   }
   commitWork(fiber.child);
   commitWork(fiber.sibling);
 }
 
 function createDom(fiber: Fiber): HTMLElement | Text {
-  // const dom = type === "TEXT_ELEMENT"
-  //   ? document.createTextNode("")
-  //   : document.createElement(type);
-  // updateProps(dom, {}, {});
-  // return dom;
-
   const dom = fiber.type === "TEXT_ELEMENT"
     ? document.createTextNode("")
     : document.createElement(fiber.type as string);
-  // updateProps(dom, {}, fiber.props ?? {}); // 设置属性
+  updateProps(dom, {}, fiber.props ?? {}); // 设置属性
   return dom;
 }
 
@@ -163,7 +179,7 @@ const isEvent = (key: string) => key.startsWith("on");
 const isProperty = (key: string) => key !== "children" && !isEvent(key);
 const isNew = (prev: Record<string, any>, next: Record<string, any>) => (key: string) => prev[key] !== next[key];
 const isGone = (prev: Record<string, any>, next: Record<string, any>) => (key: string) => !(key in next);
-function updateProps(dom: HTMLElement | Text, oldProps: Record<string, any>, newProps: Record<string, any>) {
+function updateProps(dom: HTMLElement | Text, oldProps: Record<string, any> = {}, newProps: Record<string, any> = {}) {
   // for (let key in oldProps) {
   //   if (key !== "children") {
   //     if (isEvent(key)) {
@@ -220,6 +236,7 @@ function initChildren(fiber: Fiber, elements: RElement[]) {
     let newFiber: Fiber | null = null;
     const sameType = oldFiber && element && element.type === oldFiber.type;  // 判断是否是同一个节点
 
+
     if (sameType) {
       // 如果是同一个节点，复用节点
       newFiber = {
@@ -231,6 +248,7 @@ function initChildren(fiber: Fiber, elements: RElement[]) {
         sibling: null,
         alternate: oldFiber!,
         effectTag: EffectTag.UPDATE,
+        hooks: fiber?.hooks,
       };
     }
 
@@ -245,6 +263,7 @@ function initChildren(fiber: Fiber, elements: RElement[]) {
         sibling: null,
         alternate: null,
         effectTag: EffectTag.PLACEMENT,
+        hooks: fiber?.hooks,
       };
     }
 
@@ -288,7 +307,7 @@ function updateHostComponent(fiber: Fiber) {
     updateProps(dom, fiber.alternate?.props || {}, fiber.props); // ???
   }
 
-  const children = fiber.props.children;
+  const children = fiber.props?.children ?? [];
   initChildren(fiber, children);
 }
 
@@ -306,8 +325,7 @@ export function useState<T>(initial: T): [T, (newState: T) => void] {
   }
   const actions = oldHook ? oldHook.queue : [];
   actions.forEach((action: StateAction<T>) => {
-    hook.state = action instanceof Function ? action(hook.state) : action
-      ; // 更新state
+    hook.state = action instanceof Function ? action(hook.state) : action; // 更新state
   });
   const setState = (action: StateAction<T>) => {
     hook.queue.push(action); // 将更新的state保存到queue中
@@ -353,18 +371,15 @@ function performWorkOfUnit(fiber: Fiber): Fiber | null {
   return null;
 }
 
-// const 
 
-
-export function useEffect(callback: () => void, deps: any[]) {
-  let cleanup = null
-  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex as number];
-  const hasChanged = oldHook ? !deps.every((dep, i) => dep === oldHook.deps[i]) : true;
-  if (hasChanged) {
-    cleanup = callback();
-  }
-
-  wipFiber?.hooks?.push({ deps, cleanup });
+export function useEffect(callback: () => void, deps?: any[]) {
+  // 如果deps为undefied,每次更新都会执行
+  // 如果deps为[],只会在第一次执行
+  // 如果deps有值，只有deps变化时才会执行
+  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex as number];// 获取上一次的hook
+  const hasChanged = deps ? !deps.every((dep, i) => dep === oldHook?.deps[i]) : true;
+  const hook = { callback, deps, hasChanged };  // 保存callback和deps
+  wipFiber?.hooks?.push(hook);
   hookIndex!++;
 
 }

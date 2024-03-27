@@ -1,19 +1,17 @@
 /**@jsx CReact.createElement */
-import CReact from "@meact/core"
+import CReact, { useState } from "@meact/core"
+import TodoList from "./components/Todolist"
 import Counter from "./components/Counter"
 export default function App() {
-  const [count, setCount] = CReact.useState(0)
-  const [show, setShow] = CReact.useState(!true)
-  const handleClick = () => {
-    setCount(count + 1)
-  }
+  const [show, setShow] = useState(true)
+  // let list = <TodoList />
+  let list = TodoList()
+  console.log('list', list);
 
   return <div>
-    <h1>hhhhh</h1>
-
-    {show ? <Counter /> : 'null'}
-    <button type="button" onClick={handleClick}>{count}</button>
-    <button type="button" onClick={() => setShow(i => !i)}>remove inreament</button>
+    <button onClick={() => setShow(!show)} >toggle</button>
+    {show ? <Counter /> : <p>44444</p>}
+    {list}
   </div>
 }
 
