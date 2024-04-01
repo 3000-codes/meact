@@ -1,7 +1,8 @@
 /**@jsx CReact.createElement */
-import CReact from "@meact/core"
+import CReact, { useEffect } from "@meact/core"
+// import CReact from "../draft/React"
 export default function Counter() {
-  CReact.useEffect(() => {
+  useEffect(() => {
     const timer = setInterval(() => {
       console.log('i am working');
     }, 500)

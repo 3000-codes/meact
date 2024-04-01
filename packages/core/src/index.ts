@@ -27,7 +27,7 @@ interface Fiber {
   alternate: Fiber | null; // used to record the previous Fiber node
   effectTag?: EffectTag;
   hooks?: any[];// state hooks
-  effectHooks?: any[]; // effect hooks
+  effectHooks?: EffectHook[]; // effect hooks
 }
 
 /**
@@ -123,12 +123,12 @@ function commitRoot() {
   deletions = []; // 清空deletions
 }
 
-function commintDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
+function commitDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
   // 可能是函数组件，没有dom节点，需要向下查找
   if (fiber.dom) {
     domParent.removeChild(fiber.dom);
   } else {
-    commintDeletion(fiber.child!, domParent);
+    commitDeletion(fiber.child!, domParent);
   }
 }
 
@@ -151,7 +151,8 @@ function commitWork(fiber: Fiber | null) {
   }
   else if (fiber.effectTag === EffectTag.DELETION) {
     // 如果是删除节点，删除节点
-    commintDeletion(fiber, fiberParent.dom);
+    commitDeletion(fiber, fiberParent.dom);
+    fiber.effectHooks?.forEach(item => item.cleanup?.())
     fiber.child = null
   }
   commitWork(fiber.child);
@@ -160,7 +161,7 @@ function commitWork(fiber: Fiber | null) {
 
 function commitEffectHooks(fiber: Fiber) {
   if (!fiber) return
-  const setCleanup = (hook: EffectHook) => hook.cleanup = hook.callback() ?? undefined;
+  const setCleanup = (hook: EffectHook) => hook.cleanup = hook.cleanup ?? hook.callback() ?? undefined;
 
   if (!fiber.alternate) {
     // 如果没有上一次的fiber，说明是新增节点
@@ -174,9 +175,6 @@ function commitEffectHooks(fiber: Fiber) {
       hasChanged && setCleanup(hook);
     });
   }
-  fiber.alternate?.effectHooks?.forEach((hook: EffectHook) => {
-    hook.deps?.length && hook.cleanup?.();
-  });
   commitEffectHooks(fiber.child!);
   commitEffectHooks(fiber.sibling!);
 }
@@ -299,11 +297,7 @@ function updateFunctionComponent(fiber: Fiber) {
 }
 
 function updateHostComponent(fiber: Fiber) {
-  if (!fiber.dom) {
-    const dom = (fiber.dom = createDom((fiber)));
-    updateProps(dom, {}, fiber.props); // ???
-  }
-
+  fiber.dom ??= createDom((fiber))
   const children = fiber.props?.children ?? [];
   reconcileChildren(fiber, children);
 }

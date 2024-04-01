@@ -1,7 +1,7 @@
 /**@jsx createElement */
 import { createElement, useState, useEffect } from "@meact/core"
 // import CReact from "../draft/React"
-// const { createElement, useState } = CReact
+// const { createElement, useState, useEffect } = CReact
 type Todo = {
   id: string;
   title: string;
@@ -31,9 +31,9 @@ export default function Todolist() {
   }
 
   useEffect(() => {
-    fetch('https://jsonplaceholder.typicode.com/todos')
-      .then(response => response.json())
-      .then(data => setTodos(data))
+    // fetch('https://jsonplaceholder.typicode.com/todos')
+    //   .then(response => response.json())
+    //   .then(data => setTodos(data))
     return () => {
       console.log('unmount');
     }

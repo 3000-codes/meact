@@ -451,9 +451,243 @@ function commitWork(fiber) {
 
 在3节中，我们只实现了渲染，但是我们并没有实现更新与删除。其本质就是将fiber的children与siblings进行更新与删除。
 
-### 4.1 更新
-
 我们可以通过比较新旧节点的type与props来判断是否需要更新：
 
 ```javascript
+// 我们看到我们操作children 集中在 performUnitOfWork 函数中(任务二)，我们将其提取出来
+let deletions = []; // 需要删除的节点
+let currentRoot = null; // 当前根节点(因为我们需要比较新旧节点)
+function reconcileChildren(fiber, elements) {
+    let prevSibling = null;
+    let oldFiber = fiber.alternate?.child;
+    let index = 0
+
+    while (index < elements.length || oldFiber) {
+        // index < elements.length => 新增节点
+        // oldFiber => 修改或者删除节点
+
+        const element = elements[index];
+        let newFiber = null;
+        const sameType = oldFiber && element && element.type === oldFiber.type; // 判断是否是同一个节点
+
+        if (sameType) {
+            // 如果是同一个节点，复用节点
+            newFiber = {
+                type: oldFiber.type,
+                props: element.props,
+                parent: fiber,
+                dom: oldFiber.dom,
+                alternate: oldFiber!,
+                effectTag: EffectTag.UPDATE,
+            };
+        } else {
+            if (element) {
+                // 新增节点
+                newFiber = {
+                    type: element.type,
+                    props: element.props,
+                    parent: fiber,
+                    dom: null,
+                    alternate: null, // 新增节点没有旧节点
+                    effectTag: EffectTag.PLACEMENT,
+                };
+            }
+            if (oldFiber) {
+                // 删除节点
+                oldFiber.effectTag = EffectTag.DELETION;
+                // oldFiber.dom?.remove();
+                deletions.push(oldFiber);
+            }
+        }
+
+        if (oldFiber) {
+            oldFiber = oldFiber.sibling; // 更新oldFiber
+        }
+        if (index === 0) {
+            // 如果是第一个子节点，设置为child
+            fiber.child = newFiber;
+        } else {
+            // 如果不是第一个子节点，设置为sibling
+            prevSibling!.sibling = newFiber;
+        }
+        prevSibling = newFiber; // 更新prevSibling
+        index++;
+    }
+}
+
+function render(element, container) {
+    wipRoot = {
+        dom: container,
+        props: {
+            children: [element]
+        },
+        alternate: currentRoot, // 旧节点
+    };
+    nextUnitOfWork = wipRoot;
+    deletions.length = 0; // 初始化deletions
+}
+
+// 在commitWork函数中，我们将fiber的effectTag进行判断，然后进行相应的操作
+function commitWork(fiber) {
+    if (!fiber) {
+        return;
+    }
+    let domParentFiber = fiber.parent;
+    while (!domParentFiber.dom) {
+        domParentFiber = domParentFiber.parent;
+    }
+    const domParent = domParentFiber.dom; // 父节点的dom节点
+
+    if (fiber.effectTag === EffectTag.PLACEMENT && fiber.dom) {
+        // 将子节点添加到父节点(真实dom)中
+        domParent.appendChild(fiber.dom);
+    } else if (fiber.effectTag === EffectTag.UPDATE && fiber.dom) {
+        // 更新节点
+        updateProps(fiber.dom, fiber.alternate?.props || {}, fiber.props);
+    } else if (fiber.effectTag === EffectTag.DELETION) {
+        //  删除节点
+        commitDeletion(fiber, domParent);
+    }
+    commitWork(fiber.child); // 递归子节点
+    commitWork(fiber.sibling); // 递归兄弟节点
+}
+
+function updateProps(dom, oldProps = {}, newProps = {}) {
+    const isEvent = key => key.startsWith('on'); // 约定以on开头的属性为事件
+    const isProperty = key => key !== 'children' && !isEvent(key);
+    Object.keys(oldProps).forEach((key) => {
+        // 删除旧属性
+        if (isProperty(key)) {
+            if (!(key in newProps))
+                (dom as any)[key] = "";
+        }
+        // 删除旧事件
+        if (isEvent(key)) {
+            const eventType = key.toLowerCase().substring(2);
+            dom.removeEventListener(eventType, oldProps[key]);
+        }
+    });
+    Object.keys(newProps).forEach((name) => {
+        if (isProperty(name)) {
+            // 设置属性
+            (dom as any)[name] = newProps[name];
+        }
+        if (isEvent(name)) {
+            // 设置事件
+            const eventType = name.toLowerCase().substring(2);
+            dom.addEventListener(eventType, newProps[name]);
+        }
+    });
+}
+
+function commitDeletion(fiber, domParent) {
+    domParent.removeChild(fiber.dom);
+}
+
+function commitRoot() {
+    deletions.forEach(commitWork); // 删除节点
+    commitWork(wipRoot.child); // 从长子开始提交
+    currentRoot = wipRoot; // 更新currentRoot
+    wipRoot = null;
+}
 ```
+
+## 5. 函数式组件
+
+在4节中，我们虽然“看似”实现了更新与删除，但是我们并没有办法去进行验证。在实现验证之前，我们需要实现函数式组件和组件状态管理
+
+```jsx
+function createElement(type, props, ...children) {
+  return {
+    type,
+    props: {
+      ...props,
+      children: children.map(child => typeof child === 'object' ? child : createTextElement(child))
+    }
+  }; 
+}
+
+function createTextElement(text) {
+  return {
+    type: 'TEXT_ELEMENT',
+    props: {
+      nodeValue: text,
+      children: []
+    }
+  }; 
+}
+
+/**@jsx createElement */
+const Index = () => {
+  return (
+    <div>
+      <h1>hello, world</h1>
+    </div>
+  );
+};
+
+console.log(<Index />); // {type: ()=>{...}, props: { children: [] } }
+```
+
+我们可以看到，函数式组件的type为函数，props为children，同时我们还可以推断出，函数式组件并没有自己的dom节点，所以我们需要对其进行特殊处理。
+
+```javascript
+function performUnitOfWork(fiber) {
+    if (fiber.type instanceof Function) {
+        updateFunctionComponent(fiber);
+    } else {
+        updateHostComponent(fiber);
+    }
+    // ...codes
+}
+
+function updateFunctionComponent(fiber) {
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children);
+}
+
+function updateHostComponent(fiber) {
+    if (!fiber.dom) {
+        fiber.dom = createDOM(fiber);
+    }
+    reconcileChildren(fiber, fiber.props.children);
+}
+
+// 其他需要处理函数组件的地方
+function commitWork(fiber, elements) {
+    if (!fiber) {
+        return;
+    }
+    let domParentFiber = fiber.parent;
+    while (!domParentFiber.dom) { // 函数式组件没有dom节点
+        domParentFiber = domParentFiber.parent;
+    }
+    const domParent = domParentFiber.dom; // 父节点的dom节点
+    // ...codes
+}
+
+function commitRoot() {
+    deletions.forEach(commitWork); // 删除节点
+    commitWork(wipRoot.child); // 从长子开始提交
+    currentRoot = wipRoot; // 更新currentRoot
+    wipRoot = null;
+}
+
+function commitDeletion(fiber, domParent) {
+    // 如果没有dom节点，递归删除子节点
+    if (fiber.dom) {
+        domParent.removeChild(fiber.dom);
+    } else {
+        commitDeletion(fiber.child, domParent);
+    }
+}
+```
+
+## 6. 组件状态管理(useState)
+
+在5节中，我们实现了函数式组件，但是我们并没有实现组件状态管理。我们可以通过 `useState` 来实现组件状态管理。
+
+```js
+function useState(initial) {
+
+}
