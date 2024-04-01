@@ -5,13 +5,26 @@ class EffectTag {
   static UPDATE = 'UPDATE';
 }
 
-function createElement(type, props, ...children) {
+export function createElement(
+  type,
+  props,
+  ...children
+) {
+  const formatElement = (child) =>
+    typeof child === "object" ? child : createTextElement(child);
+
   return {
     type,
     props: {
       ...props,
-      children: children.map(child => typeof child === 'object' ? child : createTextElement(child))
-    }
+      children: children.reduce((acc, child) => {
+        console.log(child);
+        if (!child) return acc
+        return Array.isArray(child) // 在jsx中使用直接array.map 导致children是二维数组，需要处理
+          ? [...acc, ...child.map(formatElement)]
+          : [...acc, formatElement(child)]
+      }, [])
+    },
   };
 }
 
@@ -66,6 +79,7 @@ requestIdleCallback(workLoop);
 function commitRoot() {
   deletions.forEach(commitWork); // 删除节点
   commitWork(wipRoot.child); // 从长子开始提交
+  commitEffectHooks(wipRoot.child); // 提交effectHooks
   currentRoot = wipRoot; // 更新currentRoot
   wipRoot = null;
 }
@@ -89,6 +103,8 @@ function commitWork(fiber) {
   } else if (fiber.effectTag === EffectTag.DELETION) {
     //  删除节点
     commitDeletion(fiber, domParent);
+    fiber.effectHooks?.forEach(item => item.cleanup?.()) // 执行cleanup
+    fiber.child = null
   }
   commitWork(fiber.child); // 递归子节点
   commitWork(fiber.sibling); // 递归兄弟节点
@@ -130,7 +146,32 @@ function commitDeletion(fiber, domParent) {
   }
 }
 
+
+function commitEffectHooks(fiber) {
+  if (!fiber) return
+  const setCleanup = (hook) => hook.cleanup = hook.cleanup ?? hook.callback() ?? undefined;
+
+  if (!fiber.alternate) {
+    // 如果没有上一次的fiber，说明是新增节点
+    fiber.effectHooks?.forEach(setCleanup);
+  } else {
+    // 如果有上一次的fiber，说明是更新节点
+    fiber.effectHooks?.forEach((hook, index) => {
+      const deps = hook.deps;
+      const oldDeps = fiber.alternate?.effectHooks?.[index]?.deps;
+      const hasChanged = !oldDeps || deps?.some((dep, i) => dep !== oldDeps[i]);
+      hasChanged && setCleanup(hook);
+    });
+  }
+  commitEffectHooks(fiber.child); // 递归子节点
+  commitEffectHooks(fiber.sibling); // 递归兄弟节点
+}
+
 function updateFunctionComponent(fiber) {
+  wipFiber = fiber; // 获取当前fiber
+  stateIndex = 0 // 初始化状态索引
+  wipFiber.hooks = []; // 初始化hooks
+  wipFiber.effectHooks = []; // 初始化effectHooks
   const children = [fiber.type(fiber.props)];
   reconcileChildren(fiber, children);
 }
@@ -139,7 +180,7 @@ function updateHostComponent(fiber) {
   if (!fiber.dom) {
     fiber.dom = createDOM(fiber);
   }
-  reconcileChildren(fiber, fiber.props.children);
+  reconcileChildren(fiber, fiber.props?.children || []);
 }
 
 
@@ -228,20 +269,79 @@ function reconcileChildren(fiber, elements) {
   }
 }
 let wipFiber = null;
+let stateIndex; // 状态索引(每个组件都可能有多个状态)
+
+function useState(initial) {
+  const oldHook = wipFiber?.alternate?.hooks?.[stateIndex]; // 获取上一次的hook
+  const hook = {
+    state: oldHook ? oldHook.state : initial, // 如果有上一次的hook，使用上一次的state，否则使用initial
+    queue: [], // 可能执行多次setState，所以使用队列
+  }
+
+  const actions = oldHook ? oldHook.queue : [];
+  actions.forEach(action => {
+    // 获取执行后的state
+    hook.state = action instanceof Function ? action(hook.state) : action;
+  });
+
+  wipFiber?.hooks?.push(hook); // 将hook添加到hooks中
+  stateIndex++; // 更新状态索引
+  const setState = (action) => {
+    hook.queue.push(action); // 将action添加到队列中
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    };
+    nextWorkOfUnit = wipRoot;
+    deletions.length = 0;
+  };
+  return [hook.state, setState];
+
+}
+
+function useEffect(callback, deps) {
+  wipFiber?.effectHooks?.push({
+    callback,
+    deps,
+  })
+}
+
+
 
 /**@jsx createElement */
-const List =
-  () =>
-  (
+
+const Interval = ({ children }) => {
+  console.log('interval', children);
+  useEffect(() => {
+    const id = setInterval(() => {
+      console.log('interval');
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+  return children;
+}
+
+const List = () => {
+  const [title, setTitle] = useState('hello world');
+  const [show, setShow] = useState(true);
+  return (
     <div>
-      <h1>hello world</h1>
-      <h2>It is a test</h2>
-      <ul>
-        <li>item 1</li>
-        <li>item 2</li>
-        <li>item 3</li>
-      </ul>
+      <h1>{title}</h1>
+      <h2 onClick={
+        () => {
+          setTitle('hello React');
+        }}>
+        set a new title
+      </h2>
+      <button onClick={() => setShow(!show)}>toggle</button>
+      {show ? (
+        <Interval>
+        </Interval>
+      ) : null}
     </div>
   );
+}
+
 
 render(<List />, document.getElementById('root'));

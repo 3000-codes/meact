@@ -515,6 +515,12 @@ function reconcileChildren(fiber, elements) {
     }
 }
 
+function createDOM(fiber) {
+    const dom = fiber.type === 'TEXT_ELEMENT' ? document.createTextNode('') : document.createElement(fiber.type);
+    updateProps(dom, {}, fiber.props ?? {}); // 设置属性
+    return dom;
+}
+
 function render(element, container) {
     wipRoot = {
         dom: container,
@@ -688,6 +694,102 @@ function commitDeletion(fiber, domParent) {
 在5节中，我们实现了函数式组件，但是我们并没有实现组件状态管理。我们可以通过 `useState` 来实现组件状态管理。
 
 ```js
+let stateIndex; // 状态索引(每个组件都可能有多个状态)
+
 function useState(initial) {
+    const oldHook = wipFiber?.alternate?.hooks?.[hookIndex]; // 获取上一次的hook
+    const hook = {
+
+        state: oldHook ? oldHook.state : initial, // 如果有上一次的hook，使用上一次的state，否则使用initial
+        queue: [], // 可能执行多次setState，所以使用队列
+
+    }
+
+    const actions = oldHook ? oldHook.queue : [];
+    actions.forEach(action => {
+        // 获取执行后的state
+        hook.state = action instanceof Function ? action(hook.state) : action;
+    });
+
+    wipFiber?.hooks?.push(hook); // 将hook添加到hooks中
+    stateIndex++; // 更新状态索引
+    const setState = (action) => {
+        hook.queue.push(action); // 将action添加到队列中
+        wipRoot = {
+            dom: currentRoot.dom,
+            props: currentRoot.props,
+            alternate: currentRoot,
+        };
+        nextUnitOfWork = wipRoot;
+        deletions.length = 0;
+    };
+    return [hook.state, setState];
 
 }
+
+function updateFunctionComponent(fiber) {
+
+    wipFiber = fiber; // 获取当前fiber
+    stateIndex = 0 // 初始化状态索引
+    wipFiber.hooks = []; // 初始化hooks
+
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children);
+}
+```
+
+## 7. 副作用处理（useEffect）
+
+参考 `React.useEffect` ，我们发现 `useEffect` 的几个特点：
+* 可以接收一个依赖数组，用于控制副作用的执行（在挂载和更新时执行）
+* 可以返回一个函数，用于清除副作用（在卸载时执行）
+* 可以有多个 `useEffect`
+
+```js
+function updateFunctionComponent(fiber) {
+    wipFiber = fiber; // 获取当前fiber
+    stateIndex = 0 // 初始化状态索引
+    wipFiber.hooks = []; // 初始化hooks
+    wipFiber.effectHooks = []; // 初始化effectHooks
+    const children = [fiber.type(fiber.props)];
+    reconcileChildren(fiber, children);
+}
+
+function commitEffectHooks(fiber: Fiber) {
+    if (!fiber) return
+    const setCleanup = (hook: EffectHook) => hook.cleanup = hook.cleanup ?? hook.callback() ?? undefined;
+
+    if (!fiber.alternate) {
+
+        // 如果没有上一次的fiber，说明是新增节点
+        fiber.effectHooks?.forEach(setCleanup);
+
+    } else {
+
+        // 如果有上一次的fiber，说明是更新节点
+        fiber.effectHooks?.forEach((hook: EffectHook, index: number) => {
+            const deps = hook.deps;
+            const oldDeps = fiber.alternate?.effectHooks?.[index]?.deps;
+            const hasChanged = !oldDeps || deps?.some((dep, i) => dep !== oldDeps[i]);
+            hasChanged && setCleanup(hook);
+        });
+
+    }
+    commitEffectHooks(fiber.child!);
+    commitEffectHooks(fiber.sibling!);
+}
+
+function useEffect(callback, deps) {
+    wipFiber?.effectHooks?.push({
+
+        callback,
+        deps,
+
+    })
+}
+```
+
+## bugs
+
+1. 节点显示/隐藏切换时，会出现节点后置的情况
+2. 高阶组件的使用无法正常子组件的状态

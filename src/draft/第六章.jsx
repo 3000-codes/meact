@@ -131,6 +131,9 @@ function commitDeletion(fiber, domParent) {
 }
 
 function updateFunctionComponent(fiber) {
+  wipFiber = fiber; // 获取当前fiber
+  stateIndex = 0 // 初始化状态索引
+  wipFiber.hooks = []; // 初始化hooks
   const children = [fiber.type(fiber.props)];
   reconcileChildren(fiber, children);
 }
@@ -228,14 +231,49 @@ function reconcileChildren(fiber, elements) {
   }
 }
 let wipFiber = null;
+let stateIndex; // 状态索引(每个组件都可能有多个状态)
+
+function useState(initial) {
+  const oldHook = wipFiber?.alternate?.hooks?.[stateIndex]; // 获取上一次的hook
+  const hook = {
+    state: oldHook ? oldHook.state : initial, // 如果有上一次的hook，使用上一次的state，否则使用initial
+    queue: [], // 可能执行多次setState，所以使用队列
+  }
+
+  const actions = oldHook ? oldHook.queue : [];
+  actions.forEach(action => {
+    // 获取执行后的state
+    hook.state = action instanceof Function ? action(hook.state) : action;
+  });
+
+  wipFiber?.hooks?.push(hook); // 将hook添加到hooks中
+  stateIndex++; // 更新状态索引
+  const setState = (action) => {
+    hook.queue.push(action); // 将action添加到队列中
+    wipRoot = {
+      dom: currentRoot.dom,
+      props: currentRoot.props,
+      alternate: currentRoot,
+    };
+    nextWorkOfUnit = wipRoot;
+    deletions.length = 0;
+  };
+  return [hook.state, setState];
+
+}
 
 /**@jsx createElement */
-const List =
-  () =>
-  (
+const List = () => {
+  const [title, setTitle] = useState('hello world');
+  return (
     <div>
-      <h1>hello world</h1>
-      <h2>It is a test</h2>
+      <h1>{title}</h1>
+      <h2 onClick={
+        () => {
+          setTitle('hello React');
+        }}>
+        set a new title
+      </h2>
       <ul>
         <li>item 1</li>
         <li>item 2</li>
@@ -243,5 +281,7 @@ const List =
       </ul>
     </div>
   );
+}
+
 
 render(<List />, document.getElementById('root'));

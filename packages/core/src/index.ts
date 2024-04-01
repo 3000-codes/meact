@@ -327,7 +327,7 @@ export function useState<T>(initial: T): [T, (newState: T) => void] {
       alternate: currentRoot,
     };
     nextWorkOfUnit = wipRoot; // 重新执行任务
-    deletions = []; // 状态更新后，需要清空deletions，重新渲染
+    deletions = []; // 状态更新后，需要清空deletions
   };
   wipFiber?.hooks?.push(hook);
   hookIndex!++;

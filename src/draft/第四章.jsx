@@ -27,11 +27,8 @@ function createTextElement(text) {
 
 function createDOM(fiber) {
   const dom = fiber.type === 'TEXT_ELEMENT' ? document.createTextNode('') : document.createElement(fiber.type);
-  Object.keys(fiber.props).filter(key => key !== 'children').forEach(name => {
-    dom[name] = fiber.props[name];
-  });
+  updateProps(dom, {}, fiber.props ?? {}); // 设置属性
   return dom;
-
 }
 
 function render(element, container) {
@@ -132,10 +129,6 @@ function performUnitOfWork(fiber) {
   if (!fiber.dom) {
     fiber.dom = createDOM(fiber);
   }
-  if (fiber.parent) {
-    // NOTE：此时已经从vnode开始与真实dom挂钩了
-    fiber.parent.dom.appendChild(fiber.dom);
-  }
 
   // 任务2：为子元素创建fiber
   reconcileChildren(fiber, fiber.props.children);
@@ -219,17 +212,6 @@ function reconcileChildren(fiber, elements) {
 }
 
 let wipFiber = null;
-function update() {
-  let currentFiber = wipFiber;
-
-  return () => {
-    wipRoot = {
-      ...currentFiber,
-      alternate: currentFiber,
-    };
-    nextWorkOfUnit = wipRoot;
-  };
-}
 
 /**@jsx createElement */
 const element = (
