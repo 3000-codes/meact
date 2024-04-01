@@ -7,27 +7,6 @@ type Todo = {
   title: string;
   completed: boolean;
 }
-// CReact.useEffect(() => {
-//   fetch('https://jsonplaceholder.typicode.com/todos')
-//     .then(response => response.json())
-//     .then(data => setTodos(data))
-// }, [])
-
-// const [todos, setTodos] = useState<Todo[]>([
-// {
-//   "userId": 1,
-//   "id": 1,
-//   "title": "delectus aut autem",
-//   "completed": false
-// },
-//   {
-//     "userId": 1,
-//     "id": 2,
-//     "title": "quis ut nam facilis et officia qui",
-//     "completed": false
-//   },
-// ]);
-
 
 export default function Todolist() {
   const [todo, setTodo] = useState<string>('')
@@ -50,6 +29,15 @@ export default function Todolist() {
     setTodo('')
 
   }
+
+  useEffect(() => {
+    fetch('https://jsonplaceholder.typicode.com/todos')
+      .then(response => response.json())
+      .then(data => setTodos(data))
+    return () => {
+      console.log('unmount');
+    }
+  }, [])
   return (
     <div>
       <h1>Todo List</h1>

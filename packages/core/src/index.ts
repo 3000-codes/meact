@@ -26,7 +26,8 @@ interface Fiber {
   dom: HTMLElement | Text | null;
   alternate: Fiber | null; // used to record the previous Fiber node
   effectTag?: EffectTag;
-  hooks?: any[];
+  hooks?: any[];// state hooks
+  effectHooks?: any[]; // effect hooks
 }
 
 /**
@@ -116,6 +117,7 @@ function commitRoot() {
   deletions.forEach(commitWork); // 先删除节点
   // if (!wipRoot?.child) return; // NOTED: ???
   commitWork(wipRoot!.child!);
+  commitEffectHooks(wipRoot as Fiber);
   currentRoot = wipRoot as Fiber;
   wipRoot = null;
   deletions = []; // 清空deletions
@@ -156,6 +158,29 @@ function commitWork(fiber: Fiber | null) {
   commitWork(fiber.sibling);
 }
 
+function commitEffectHooks(fiber: Fiber) {
+  if (!fiber) return
+  const setCleanup = (hook: EffectHook) => hook.cleanup = hook.callback() ?? undefined;
+
+  if (!fiber.alternate) {
+    // 如果没有上一次的fiber，说明是新增节点
+    fiber.effectHooks?.forEach(setCleanup);
+  } else {
+    // 如果有上一次的fiber，说明是更新节点
+    fiber.effectHooks?.forEach((hook: EffectHook, index: number) => {
+      const deps = hook.deps;
+      const oldDeps = fiber.alternate?.effectHooks?.[index]?.deps;
+      const hasChanged = !oldDeps || deps?.some((dep, i) => dep !== oldDeps[i]);
+      hasChanged && setCleanup(hook);
+    });
+  }
+  fiber.alternate?.effectHooks?.forEach((hook: EffectHook) => {
+    hook.deps?.length && hook.cleanup?.();
+  });
+  commitEffectHooks(fiber.child!);
+  commitEffectHooks(fiber.sibling!);
+}
+
 function createDom(fiber: Fiber): HTMLElement | Text {
   const dom = fiber.type === "TEXT_ELEMENT"
     ? document.createTextNode("")
@@ -163,7 +188,6 @@ function createDom(fiber: Fiber): HTMLElement | Text {
   updateProps(dom, {}, fiber.props ?? {}); // 设置属性
   return dom;
 }
-
 
 const isEvent = (key: string) => key.startsWith("on");
 const isProperty = (key: string) => key !== "children" && !isEvent(key);
@@ -268,6 +292,7 @@ function updateFunctionComponent(fiber: Fiber) {
   wipFiber = fiber;
   hookIndex = 0;
   wipFiber.hooks = [];
+  wipFiber.effectHooks = [];
   // 函数组件没有自己的dom节点，所以不需要创建dom节点
   const children = [(fiber.type as Function)(fiber.props)];
   reconcileChildren(fiber, children);
@@ -324,9 +349,7 @@ function performWorkOfUnit(fiber: Fiber): Fiber | null {
   } else {
     updateHostComponent(fiber);
   }
-
   // 4. Return the next task to be executed
-
   if (fiber.child) {
     return fiber.child; // 如果有子节点，返回子节点
   }
@@ -344,14 +367,16 @@ function performWorkOfUnit(fiber: Fiber): Fiber | null {
   return null;
 }
 
+type EffectHook = {
+  callback: () => (() => void) | void;
+  deps?: any[];
+  cleanup?: () => void;
+}
 
-export function useEffect(callback: () => void, deps?: any[]) {
-  // 如果deps为undefied,每次更新都会执行
-  // 如果deps为[],只会在第一次执行
-  // 如果deps有值，只有deps变化时才会执行
-  const oldHook = wipFiber?.alternate?.hooks?.[hookIndex as number];// 获取上一次的hook
-  const hasChanged = deps ? !deps.every((dep, i) => dep === oldHook?.deps[i]) : true;
-  const hook = { callback, deps, hasChanged };  // 保存callback和deps
-  wipFiber?.hooks?.push(hook);
-  hookIndex!++;
+export function useEffect(callback: EffectHook['callback'], deps?: any[]) {
+  const effectHook: EffectHook = {
+    callback,
+    deps,
+  }
+  wipFiber?.effectHooks?.push(effectHook)
 }
