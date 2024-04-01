@@ -41,13 +41,19 @@ export function createElement(
   props: Record<string, any> | null,
   ...children: (RElement | string)[]
 ): RElement {
+  const formatElement = (child: RElement | string) =>
+    typeof child === "object" ? child : createTextElement(child);
+
   return {
     type,
     props: {
       ...props,
-      children: children.map((child) =>
-        typeof child === "object" ? child : createTextElement(child)
-      ),
+      children: children.reduce((acc, child) => {
+        if (!child) return acc
+        return Array.isArray(child) // 在jsx中使用直接array.map 导致children是二维数组，需要处理
+          ? [...acc, ...child.map(formatElement)]
+          : [...acc, formatElement(child)]
+      }, [] as RElement[])
     },
   };
 }
@@ -82,11 +88,17 @@ let wipRoot: Partial<Fiber> | null = null; // root node
 let nextWorkOfUnit: Partial<Fiber> | null = null; // next task to be executed
 let currentRoot: Fiber | null = null; // current root node
 let deletions: Fiber[] = []; // nodes to be deleted
+let wipFiber: Fiber | null = null; // work in progress fiber
 
 function workLoop(deadline: IdleDeadline) {
   let shouldYield = false;
   while (!shouldYield && nextWorkOfUnit) {
     nextWorkOfUnit = performWorkOfUnit(nextWorkOfUnit as Fiber);
+    if (wipRoot?.sibling?.type === nextWorkOfUnit?.type) {
+      // why??
+      nextWorkOfUnit = null
+    }
+
     shouldYield = deadline.timeRemaining() < 1;
   }
 
@@ -106,6 +118,7 @@ function commitRoot() {
   commitWork(wipRoot!.child!);
   currentRoot = wipRoot as Fiber;
   wipRoot = null;
+  deletions = []; // 清空deletions
 }
 
 function commintDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
@@ -115,7 +128,6 @@ function commintDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
   } else {
     commintDeletion(fiber.child!, domParent);
   }
-  fiber.hooks?.forEach(i => i?.cleanup?.()) //  卸载时执行cleanup
 }
 
 function commitWork(fiber: Fiber | null) {
@@ -130,37 +142,15 @@ function commitWork(fiber: Fiber | null) {
   if (fiber.dom != null && fiber.effectTag === EffectTag.PLACEMENT) {
     // 如果是新增节点，添加到父节点
     (fiberParent.dom as HTMLElement).append(fiber.dom);
-    fiber.hooks?.forEach(hook => {
-      const callback = hook?.callback;
-      const deps = hook?.deps;
-      let cleanup = hook?.cleanup;
-      if (deps?.length === 0) {
-        cleanup ??= callback?.()
-      }
-      hook.cleanup = cleanup;
-    })
   }
   else if (fiber.dom != null && fiber.effectTag === EffectTag.UPDATE) {
     // 如果是更新节点，更新节点
     updateProps(fiber.dom, fiber.alternate!.props, fiber.props);
-    fiber.hooks?.forEach(hook => {
-      const callback = hook?.callback;
-      const deps = hook?.deps;
-      const hasChanged = hook?.hasChanged;
-      let cleanup = hook?.cleanup;
-      if (deps === undefined) {
-        cleanup ??= callback?.()
-      } else if (deps.length && hasChanged) {
-        cleanup ??= callback?.()
-      }
-      hook.cleanup = cleanup;
-    }) // 更新时执行callback
   }
   else if (fiber.effectTag === EffectTag.DELETION) {
     // 如果是删除节点，删除节点
-    // fiberParent.dom.removeChild(fiber.dom!);
     commintDeletion(fiber, fiberParent.dom);
-
+    fiber.child = null
   }
   commitWork(fiber.child);
   commitWork(fiber.sibling);
@@ -177,65 +167,40 @@ function createDom(fiber: Fiber): HTMLElement | Text {
 
 const isEvent = (key: string) => key.startsWith("on");
 const isProperty = (key: string) => key !== "children" && !isEvent(key);
-const isNew = (prev: Record<string, any>, next: Record<string, any>) => (key: string) => prev[key] !== next[key];
-const isGone = (prev: Record<string, any>, next: Record<string, any>) => (key: string) => !(key in next);
 function updateProps(dom: HTMLElement | Text, oldProps: Record<string, any> = {}, newProps: Record<string, any> = {}) {
-  // for (let key in oldProps) {
-  //   if (key !== "children") {
-  //     if (isEvent(key)) {
-  //       const eventType = key.toLowerCase().substring(2);
-  //       const handler = oldProps[key] as EventListener;
-  //       dom.removeEventListener(eventType, handler); // 先移除之前的事件,防止重复绑定
-  //       dom.addEventListener(eventType, handler);
-  //     }
-  //     else {
-  //       (dom as any)[key] = oldProps[key];
-  //     }
-  //   }
-  // }
-  // 移除旧属性
-  Object.keys(oldProps)
-    .filter(isProperty)
-    .filter(isGone(oldProps, newProps))
-    .forEach((name) => {
-      (dom as any)[name] = "";
-    });
-  // 移除旧事件
-  Object.keys(oldProps)
-    .filter(isEvent)
-    .filter((key) => !(key in newProps) || isNew(oldProps, newProps)(key))
-    .forEach((name) => {
-      const eventType = name.toLowerCase().substring(2);
-      dom.removeEventListener(eventType, oldProps[name]);
-    });
-  // 设置或者更新属性
-  Object.keys(newProps)
-    .filter(isProperty)
-    .filter(isNew(oldProps, newProps))
-    .forEach((name) => {
+  Object.keys(oldProps).forEach((key) => {
+    // 删除旧属性
+    if (isProperty(key)) {
+      if (!(key in newProps))
+        (dom as any)[key] = "";
+    }
+    // 删除旧事件
+    if (isEvent(key)) {
+      const eventType = key.toLowerCase().substring(2);
+      dom.removeEventListener(eventType, oldProps[key]);
+    }
+  });
+  Object.keys(newProps).forEach((name) => {
+    if (isProperty(name)) {
       (dom as any)[name] = newProps[name];
-    });
-  // 设置或者更新事件
-  Object.keys(newProps)
-    .filter(isEvent)
-    .filter(isNew(oldProps, newProps))
-    .forEach((name) => {
+    }
+    if (isEvent(name)) {
       const eventType = name.toLowerCase().substring(2);
       dom.addEventListener(eventType, newProps[name]);
-    });
+    }
+  });
 }
 
-function initChildren(fiber: Fiber, elements: RElement[]) {
-  let index = 0;
+function reconcileChildren(fiber: Fiber, elements: RElement[]) {
   let prevSibling: Fiber | null = null;
   let oldFiber = fiber.alternate?.child;
 
   // 1. 创建子节点
+  let index = 0;
   while (index < elements.length || oldFiber) {
     const element = elements[index];
     let newFiber: Fiber | null = null;
     const sameType = oldFiber && element && element.type === oldFiber.type;  // 判断是否是同一个节点
-
 
     if (sameType) {
       // 如果是同一个节点，复用节点
@@ -287,9 +252,16 @@ function initChildren(fiber: Fiber, elements: RElement[]) {
     prevSibling = newFiber; // 更新prevSibling
     index++;
   }
+
+  while (oldFiber as Fiber) {
+    // 如果oldFiber还有子节点，删除节点
+    oldFiber!.effectTag = EffectTag.DELETION;
+    deletions.push(oldFiber!);
+    oldFiber = oldFiber!.sibling;
+  }
 }
 
-let wipFiber: Fiber | null = null; // work in progress fiber
+
 let hookIndex: null | number = null; // hook index
 
 function updateFunctionComponent(fiber: Fiber) {
@@ -298,17 +270,17 @@ function updateFunctionComponent(fiber: Fiber) {
   wipFiber.hooks = [];
   // 函数组件没有自己的dom节点，所以不需要创建dom节点
   const children = [(fiber.type as Function)(fiber.props)];
-  initChildren(fiber, children);
+  reconcileChildren(fiber, children);
 }
 
 function updateHostComponent(fiber: Fiber) {
   if (!fiber.dom) {
     const dom = (fiber.dom = createDom((fiber)));
-    updateProps(dom, fiber.alternate?.props || {}, fiber.props); // ???
+    updateProps(dom, {}, fiber.props); // ???
   }
 
   const children = fiber.props?.children ?? [];
-  initChildren(fiber, children);
+  reconcileChildren(fiber, children);
 }
 
 type StateAction<T> = T | ((state: T) => T);
@@ -327,6 +299,7 @@ export function useState<T>(initial: T): [T, (newState: T) => void] {
   actions.forEach((action: StateAction<T>) => {
     hook.state = action instanceof Function ? action(hook.state) : action; // 更新state
   });
+
   const setState = (action: StateAction<T>) => {
     hook.queue.push(action); // 将更新的state保存到queue中
     wipRoot = {
@@ -381,5 +354,4 @@ export function useEffect(callback: () => void, deps?: any[]) {
   const hook = { callback, deps, hasChanged };  // 保存callback和deps
   wipFiber?.hooks?.push(hook);
   hookIndex!++;
-
 }

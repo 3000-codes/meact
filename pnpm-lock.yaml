@@ -11,9 +11,6 @@ importers:
       '@meact/core':
         specifier: workspace:^
         version: link:packages/core
-      '@meact/didact':
-        specifier: workspace:^
-        version: link:packages/didact
       '@meact/dom':
         specifier: workspace:^
         version: link:packages/dom
@@ -57,12 +54,6 @@ importers:
       '@meact/shared':
         specifier: workspace:^
         version: link:../shared
-
-  packages/didact:
-    dependencies:
-      '@meact/core':
-        specifier: workspace:^
-        version: link:../core
 
   packages/dom:
     dependencies:
