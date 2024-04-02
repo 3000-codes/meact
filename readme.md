@@ -139,7 +139,7 @@ const input = (
 );
 
 // babel转化后的代码
-const outpu = XXX.BBB(
+const output = XXX.BBB(
     'div',
     { id: 'root' },
     XXX.BBB('p', null, 'hello, world')
@@ -231,7 +231,7 @@ const example= (
   </div>
   )
   // 在(1. DOM的转化)我们将其转化为如下的Virtual DOM：
- const output {
+ const output= {
     type: 'div',
     props: {
         children: [

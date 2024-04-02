@@ -124,12 +124,17 @@ function commitRoot() {
 }
 
 function commitDeletion(fiber: Fiber, domParent: HTMLElement | Text) {
-  // 可能是函数组件，没有dom节点，需要向下查找
-  if (fiber.dom) {
-    domParent.removeChild(fiber.dom);
-  } else {
-    commitDeletion(fiber.child!, domParent);
+  try {
+    // 可能是函数组件，没有dom节点，需要向下查找
+    if (fiber.dom) {
+      domParent.removeChild(fiber.dom);
+    } else {
+      commitDeletion(fiber.child!, domParent);
+    }
+  } catch (error) {
+    // 为什么加上捕获才会成功？？？
   }
+
 }
 
 function commitWork(fiber: Fiber | null) {
@@ -271,7 +276,9 @@ function reconcileChildren(fiber: Fiber, elements: RElement[]) {
       // 如果不是第一个子节点，设置为sibling
       prevSibling!.sibling = newFiber;
     }
-    prevSibling = newFiber; // 更新prevSibling
+    if (newFiber) {
+      prevSibling = newFiber; // 更新prevSibling
+    }
     index++;
   }
 
